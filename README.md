@@ -4,6 +4,43 @@ A SystemVerilog asynchronous FIFO demonstrating fundamental clock-domain crossin
 
 The design uses dual-clock storage, binary and Gray-coded pointers, two-stage pointer synchronizers, and domain-local full/empty generation. Verification exercises the FIFO across varying asynchronous clock relationships, pointer wraparound, boundary conditions, concurrent traffic, and reset behavior.
 
+## Architecture
+```mermaid
+flowchart LR
+    subgraph WR["Write Domain (wr_clk)"]
+        direction TB
+        WP["Write Pointer: Binary + Gray"]
+        FC["Full Detection (full)"]
+        RS["2-FF Synchronizer: rd_gray"]
+        WP --> FC
+        RS --> FC
+    end
+
+    MEM["Shared Storage: DATA_WIDTH x DEPTH"]
+    WDATA["wr_data"]
+    WDATA -->|"write data"| MEM
+
+    subgraph RD["Read Domain (rd_clk)"]
+        direction TB
+        WS["2-FF Synchronizer: wr_gray"]
+        RP["Read Pointer: Binary + Gray"]
+        EC["Empty Detection (empty)"]
+        Q["Registered rd_data"]
+        WS --> EC
+        RP --> EC
+    end
+
+    WP -->|"write address"| MEM
+    RP -->|"read address"| MEM
+    MEM -->|"read data"| Q
+
+    WP -.-> WS
+    RP -.-> RS
+```
+Dashed arrows represent Gray-coded pointer transfers across clock domains through two-stage synchronizers.
+
+Writes occur on `wr_clk` when `wr_en && !full`; reads update `rd_data` on `rd_clk` when `rd_en && !empty`. Each domain uses synchronized Gray-coded pointer information from the opposite domain to determine its local full or empty status.
+
 ## Overview
 
 Directly synchronizing every bit of a multi-bit bus does not guarantee a coherent destination value. Individual bits can be sampled at different points in their transitions, potentially producing a combination that never existed in the source domain.
@@ -242,7 +279,7 @@ The exact inferred or instantiated memory structure is technology-dependent and 
 
 ## Verification
 
-The FIFO is verified with a self-checking SystemVerilog testbench. AI assistance was used to generate and refine portions of the SystemVerilog verification testbench. All verification code was  manually reviewed and exercised through simulation and regression.
+The FIFO is verified with a self-checking SystemVerilog testbench. AI assistance was used to generate and refine portions of the SystemVerilog verification testbench. All verification code was manually reviewed and exercised through simulation and regression.
 
 A reference queue tracks accepted transactions:
 
@@ -320,6 +357,48 @@ The corresponding read-pointer propagation into the write domain was also inspec
 
 The observed synchronization delay is intentional: remote state is not expected to become visible immediately.
 
+## Running the Flow
+
+The project uses Verilator for SystemVerilog linting and simulation, Yosys for synthesis, and Bash scripts to automate verification. Run all commands from the repository root.
+
+### Single-Seed Verification
+
+Run linting, self-checking simulation, and synthesis:
+
+```bash
+./scripts/run_flow.sh async_fifo 1
+```
+
+The second argument specifies the simulation seed and defaults to `1`.
+
+The flow:
+1. Lints the RTL using Verilator.
+2. Compiles the SystemVerilog testbench with assertions enabled.
+3. Runs the simulation using the specified seed.
+4. Synthesizes the design using Yosys.
+
+Results and logs are saved under `results/`.
+
+### Multi-Seed Regression
+
+Run the design across multiple random seeds:
+
+```bash
+./scripts/run_regression.sh async_fifo 10
+```
+
+The second argument specifies the number of seeds and defaults to `1`. Seeds are numbered sequentially beginning at 1.
+
+Each seed exercises an independently selected write/read clock relationship and randomized testbench behavior. The regression stops if any simulation fails.
+
+For the full 1200-seed regression described in the verification section:
+
+```bash
+./scripts/run_regression.sh async_fifo 1200
+```
+
+Simulation logs are saved separately for each seed under `results/`. The flow reports success only after all requested simulations and synthesis complete successfully.
+
 ## CDC Properties Demonstrated
 
 This project demonstrates several core CDC principles:
@@ -347,17 +426,5 @@ Notable limitations include:
 - The physical implementation of the dual-clock storage is technology-dependent.
 - Production implementation would require appropriate CDC analysis and timing/physical constraints, including consideration of Gray-pointer inter-bit skew.
 - Formal CDC verification and technology-specific memory characterization are outside the scope of this project.
-
-## Files
-
-```text
-rtl/
-    async_fifo.sv
-
-tb/
-    async_fifo_tb.sv
-```
-
-The RTL contains the asynchronous FIFO implementation, while the testbench provides directed and randomized self-checking verification.
 
 Note: This README was generated with AI assistance and manually verified by the author.
