@@ -1,4 +1,4 @@
-# CDC Foundations
+# Asynchronous FIFO — Clock-Domain Crossing
 
 A SystemVerilog asynchronous FIFO demonstrating fundamental clock-domain crossing (CDC) techniques for transferring multi-bit data between independently clocked domains.
 
